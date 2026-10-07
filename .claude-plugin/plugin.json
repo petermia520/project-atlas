@@ -1,0 +1,17 @@
+{
+  "name": "project-atlas",
+  "version": "0.1.0",
+  "description": "A maintained project map of your repository (modules, business areas, flows, dependencies, AI-written module pages, human-pinned notes) and branch review reports for agent-written branches, drawn on that map.",
+  "author": {
+    "name": "Project Atlas maintainers",
+    "email": "peterlovemia520@gmail.com"
+  },
+  "keywords": [
+    "code-review",
+    "architecture",
+    "project-map",
+    "agents",
+    "pull-request",
+    "impact-analysis"
+  ]
+}

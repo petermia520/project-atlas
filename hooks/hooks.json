@@ -1,0 +1,27 @@
+{
+  "description": "Project Atlas: tell agents the commit-trailer convention at session start, and record a session summary at session end.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/session_start.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/session_end.py\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

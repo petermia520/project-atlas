@@ -1,0 +1,14 @@
+{
+  "name": "project-atlas",
+  "description": "Project map and branch review reports for agent-written code.",
+  "owner": {"name": "Project Atlas maintainers"},
+  "plugins": [
+    {
+      "name": "project-atlas",
+      "source": "./",
+      "description": "A maintained project map of your repository and branch review reports for agent-written branches, drawn on that map.",
+      "version": "0.1.0",
+      "category": "development"
+    }
+  ]
+}

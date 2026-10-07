@@ -1,0 +1,61 @@
+# Copy to .github/workflows/update-map.yml.
+# After each merge to main: recompute facts, let Claude rewrite pages for changed modules,
+# and open a pull request with the .project-map/ changes for people to review.
+name: Update project map
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: [".project-map/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: project-map
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0            # history is needed for churn and stale checks
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      # Adjust to where the plugin lives: vendored in the repo, or a checkout of its repository.
+      - name: Get Project Atlas
+        uses: actions/checkout@v4
+        with:
+          repository: your-org/project-atlas
+          path: .tools/project-atlas
+
+      - name: Update the map
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          claude -p "Use the project-map skill to update the project map for main. Do not commit or push." \
+            --plugin-dir .tools/project-atlas \
+            --permission-mode acceptEdits \
+            --allowedTools "Bash(python3:*)" "Bash(git log:*)" "Bash(git diff:*)" "Bash(git show:*)" Read Write Edit Glob Grep
+
+      - name: Open a pull request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: chore/project-map
+          add-paths: .project-map/
+          commit-message: "chore(project-map): update for ${{ github.sha }}"
+          title: "Project map update"
+          body: |
+            Automated update after ${{ github.sha }}.
+            Review new or moved groups, re-traced flows, and module pages waiting for approval
+            (`.pending.md` files; approve with `python3 .tools/project-atlas/scripts/atlas_cli.py approve <module>`).

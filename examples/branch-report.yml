@@ -1,0 +1,57 @@
+# Copy to .github/workflows/branch-report.yml.
+# Writes a review report for pull requests from agent branches and uploads it as a build artifact.
+# In CI, sessions come from commit trailers and git notes only (local transcripts are not available).
+name: Branch report
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: read
+
+jobs:
+  report:
+    if: startsWith(github.head_ref, 'claude/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Fetch base branch and session notes
+        run: |
+          git fetch origin ${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}
+          git fetch origin refs/notes/atlas-sessions:refs/notes/atlas-sessions || true
+          git checkout -B ${{ github.head_ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm install -g @anthropic-ai/claude-code
+
+      - name: Get Project Atlas
+        uses: actions/checkout@v4
+        with:
+          repository: your-org/project-atlas
+          path: .tools/project-atlas
+
+      - name: Write the report
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          claude -p "Use the branch-report skill to review this branch against origin/${{ github.base_ref }}. The task is the pull request description: gh pr view ${{ github.event.pull_request.number }}." \
+            --plugin-dir .tools/project-atlas \
+            --permission-mode acceptEdits \
+            --allowedTools "Bash(python3:*)" "Bash(git:*)" "Bash(gh pr view:*)" Read Write Edit Glob Grep
+          cp "$(python3 .tools/project-atlas/scripts/atlas_cli.py report-dir)/report.html" branch-report.html
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: branch-report
+          path: branch-report.html
