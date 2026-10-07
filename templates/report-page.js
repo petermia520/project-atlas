@@ -24,6 +24,7 @@
     return String(n);
   }
   var SEV_PILL = { crit: "crit", warn: "warn", info: "info", ok: "ok" };
+  var AGENT_NAMES = { "claude-code": "Claude Code", pi: "pi", omp: "oh-my-pi" };
   var sections = [];
 
   /* ---------------------------------------------------------------- header + strip */
@@ -141,7 +142,8 @@
     } else {
       var used = {};
       S.sessions.forEach(function (s) {
-        rows.push({ head: t("session") + " " + String(s.id).slice(0, 8) + " · " + when(s.start).slice(5) + " – " + when(s.end).slice(11) + " · " + dur(s.duration_s) });
+        rows.push({ head: t("session") + " " + String(s.id).slice(0, 8) + " · " + (AGENT_NAMES[s.agent] || s.agent || "") + " · " + when(s.start).slice(5) + " – " + when(s.end).slice(11) + " · " + dur(s.duration_s) +
+          (s.matched_by === "time" ? " · " + t("matched_time") : "") });
         var items = [];
         if (s.task) items.push({ ts: s.start, text: s.task.split("\n")[0].slice(0, 200), kind: "step", meta: [t("first_prompt")] });
         (s.human_messages || []).forEach(function (m) { items.push({ ts: m.ts, text: m.text, kind: "human", meta: [t("human_msg")] }); });
@@ -180,7 +182,9 @@
     '<div class="effort"><div><span class="label">' + esc(t("active_time")) + '</span><div class="big">' + esc(dur(tok.duration_s)) + "</div></div>" +
     '<div><span class="label">' + esc(t("tool_calls")) + '</span><div class="big">' + fmt(tok.tool_calls || 0, lang) + "</div></div>" +
     '<div><span class="label">' + esc(t("tokens_in")) + '</span><div class="big">' + compact((tok.input_tokens || 0) + (tok.cache_read_input_tokens || 0) + (tok.cache_creation_input_tokens || 0)) + "</div></div>" +
-    '<div><span class="label">' + esc(t("tokens_out")) + '</span><div class="big">' + compact(tok.output_tokens || 0) + "</div></div></div></div></section></div>");
+    '<div><span class="label">' + esc(t("tokens_out")) + '</span><div class="big">' + compact(tok.output_tokens || 0) + "</div></div></div>" +
+    (tok.cost_usd ? '<p class="small" style="margin:0;padding:0 16px 14px">' + esc(t("cost_reported", { usd: tok.cost_usd.toFixed(2) })) + "</p>" : "") +
+    "</div></section></div>");
 
   /* ---------------------------------------------------------------- decisions */
   var decisions = (R.decisions || []).map(function (d) { return { title: d.title, why: d.why, alt: d.alternatives, src: "ai" }; });
@@ -201,6 +205,7 @@
   var srcs = {};
   S.sessions.forEach(function (s) { srcs[s.source] = true; });
   sections.push("<footer><span>" + esc(t("sources", { range: short(D.merge_base) + ".." + short(D.head.sha) })) + "</span>" +
+    ((S.agents || []).length ? "<span>" + esc(t("agents_seen", { list: S.agents.map(function (a) { return AGENT_NAMES[a] || a; }).join(", ") })) + "</span>" : "") +
     "<span>" + esc(t("session_sources", { list: Object.keys(srcs).map(function (k) { return t("src_" + k); }).join(", ") || t("none") })) + "</span>" +
     "<span>" + esc(t("local_ack")) + "</span><span>" + esc(D.tool) + "</span>" +
     (D.warnings.length ? "<span>" + esc(t("n_warnings", { n: D.warnings.length })) + "</span>" : "") + "</footer>");

@@ -1,0 +1,16 @@
+{
+  "name": "project-atlas",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A maintained project map of your repository and branch review reports for agent-written branches, drawn on that map. Works with Claude Code, pi and oh-my-pi.",
+  "keywords": ["pi-package", "omp", "claude-code", "code-review", "architecture", "agents"],
+  "author": "Project Atlas maintainers <peterlovemia520@gmail.com>",
+  "pi": {
+    "skills": ["./skills"],
+    "extensions": ["./extensions/project-atlas.ts"]
+  },
+  "omp": {
+    "extensions": ["./extensions/project-atlas.ts"]
+  },
+  "files": ["skills", "extensions", "scripts", "templates", "hooks", ".claude-plugin", "README.md"]
+}

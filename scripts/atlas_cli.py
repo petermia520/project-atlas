@@ -3,6 +3,7 @@
 
 Map (main branch):     init · facts · summary · check · stale · page-path · approve · render map
 Branch report:         report-dir · impact · sessions · transcript · ci · baseline · render report
+Agents:                agent-context (trailer instructions; --agents-md for a snippet)
 """
 
 import argparse
@@ -13,7 +14,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from atlas import __version__, ci, facts as factsmod, gitio, impact as impactmod, project, render, sessions as sessmod  # noqa: E402
+from atlas import __version__, agents, ci, facts as factsmod, gitio, impact as impactmod, project, render, sessions as sessmod  # noqa: E402
 
 
 def _root(args):
@@ -185,7 +186,8 @@ def cmd_sessions(args):
         out, t.get("sessions", 0), t.get("human_messages", 0), t.get("tool_calls", 0),
         (" · no data for trailer sessions: " + ", ".join(data["missing"])) if data["missing"] else ""))
     for s in data["sessions"]:
-        print("- %s %s %s %s" % (s["id"], s.get("source"), s.get("start"), s.get("transcript_path") or ""))
+        print("- %s · %s · matched by %s · from %s · %s" % (s["id"], s.get("agent", "claude-code"), s.get("matched_by"),
+                                                          s.get("source"), s.get("transcript_path") or ""))
 
 
 def cmd_transcript(args):
@@ -208,6 +210,13 @@ def cmd_baseline(args):
     data = impactmod.baseline(root, ref, args.days, factsmod.scan_settings(atlas))
     out = _write_json(args.out or os.path.join(folder, "baseline.json"), data)
     print("%s\n%s" % (out, json.dumps(data)))
+
+
+def cmd_agent_context(args):
+    if args.agents_md:
+        print(agents.AGENTS_MD_SNIPPET)
+    else:
+        print(agents.trailer_context(args.session_id, os.path.abspath(__file__)))
 
 
 # ---------------------------------------------------------------- render
@@ -342,6 +351,11 @@ def build_parser():
     s.add_argument("--max-len", type=int, default=300)
     s.add_argument("--no-tools", action="store_true")
     s.set_defaults(fn=cmd_transcript)
+
+    s = sub.add_parser("agent-context", help="print the commit-trailer instructions agents get at session start")
+    s.add_argument("--session-id")
+    s.add_argument("--agents-md", action="store_true", help="print a snippet for AGENTS.md / CLAUDE.md instead")
+    s.set_defaults(fn=cmd_agent_context)
 
     s = sub.add_parser("render", help="render the map or the branch report to HTML")
     s.add_argument("what", choices=("map", "report"))

@@ -425,6 +425,72 @@ def write_transcript(root, claude_home):
     return folder
 
 
+PI_SESSION = "0192a3b4-c5d6-7e8f-9a0b-1c2d3e4f5a6b"
+OMP_SESSION = "0192a3b4-0000-7e8f-9a0b-ffffffffffff"
+
+
+def _pi_entry(i, parent, ts, **fields):
+    return dict({"id": "%08x" % i, "parentId": parent, "timestamp": ts}, **fields)
+
+
+def write_pi_transcripts(root, home):
+    """pi and omp session files: one recorded by the extension (branch entries), one without branch info
+    whose times overlap the branch commits, and two decoys (other folder; same folder, far in time).
+    Returns {"pi": sessions_dir, "omp": sessions_dir}."""
+    import datetime
+    cwd = os.path.realpath(root)
+    out = subprocess.run(["git", "-C", root, "log", "-1", "--format=%aI", BRANCH], capture_output=True, text=True).stdout.strip()
+    commit = datetime.datetime.fromisoformat(out)
+    iso = lambda dt: dt.astimezone(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")  # noqa: E731
+    pi_dir = os.path.join(home, "pi", "sessions", "--" + cwd.strip("/").replace("/", "-") + "--")
+    omp_dir = os.path.join(home, "omp", "agent", "sessions", "-" + cwd.strip("/").replace("/", "-"))
+    os.makedirs(pi_dir, exist_ok=True)
+    os.makedirs(omp_dir, exist_ok=True)
+    t0 = commit - datetime.timedelta(minutes=20)
+    at = lambda m: iso(t0 + datetime.timedelta(minutes=m))  # noqa: E731
+    usage = lambda i, o, c: {"input": i, "output": o, "cacheRead": 0, "cacheWrite": 0, "totalTokens": i + o, "cost": {"total": c}}  # noqa: E731
+
+    pi_rows = [
+        {"type": "session", "version": 3, "id": PI_SESSION, "timestamp": at(0), "cwd": cwd},
+        _pi_entry(1, None, at(0), type="custom", customType="project-atlas.branch", data={"branch": "main"}),
+        _pi_entry(2, "00000001", at(1), type="message", message={"role": "user", "content": [{"type": "text", "text": "Add retries with backoff to webhook delivery."}]}),
+        _pi_entry(3, "00000002", at(2), type="message", message={"role": "assistant", "model": "claude-sonnet-5-5", "stopReason": "toolUse",
+                  "content": [{"type": "toolCall", "id": "c1", "name": "bash", "arguments": {"command": "git checkout -b " + BRANCH}}], "usage": usage(900, 40, 0.01)}),
+        _pi_entry(4, "00000003", at(2), type="message", message={"role": "toolResult", "toolCallId": "c1", "content": [{"type": "text", "text": "ok"}]}),
+        _pi_entry(5, "00000004", at(2), type="custom", customType="project-atlas.branch", data={"branch": BRANCH}),
+        _pi_entry(6, "00000005", at(5), type="message", message={"role": "assistant", "model": "claude-sonnet-5-5", "stopReason": "toolUse",
+                  "content": [{"type": "text", "text": "Adding the retry loop."}, {"type": "toolCall", "id": "c2", "name": "edit",
+                  "arguments": {"path": "payments/webhooks/delivery.py", "oldText": "a", "newText": "b"}}], "usage": usage(2000, 300, 0.05)}),
+        _pi_entry(7, "00000006", at(9), type="message", message={"role": "user", "content": "Keep the original payload order in the DLQ."}),
+        _pi_entry(8, "00000007", at(10), type="message", message={"role": "bashExecution", "command": "pytest -q", "output": "4 passed"}),
+        _pi_entry(9, "00000008", at(12), type="message", message={"role": "assistant", "model": "claude-sonnet-5-5", "stopReason": "aborted",
+                  "content": [{"type": "text", "text": "Stopping."}], "usage": usage(500, 10, 0.002)}),
+    ]
+    omp_rows = [
+        {"type": "session", "version": 3, "id": OMP_SESSION, "timestamp": at(3), "cwd": cwd, "title": "dlq"},
+        _pi_entry(1, None, at(3), type="message", message={"role": "user", "content": "Write the DLQ module."}),
+        _pi_entry(2, "00000001", at(6), type="message", message={"role": "assistant", "model": "gpt-6", "stopReason": "toolUse",
+                  "content": [{"type": "toolCall", "id": "x1", "name": "write", "arguments": {"path": cwd + "/payments/webhooks/dlq.py", "content": "..."}}],
+                  "usage": usage(1500, 200, 0.03)}),
+        _pi_entry(3, "00000002", at(7), type="message", message={"role": "developer", "content": "internal"}),
+    ]
+    far = commit - datetime.timedelta(days=3)
+    decoy_far = [{"type": "session", "version": 3, "id": "far", "timestamp": iso(far), "cwd": cwd},
+                 _pi_entry(1, None, iso(far), type="message", message={"role": "user", "content": "Unrelated work days ago."})]
+    decoy_other = [{"type": "session", "version": 3, "id": "other", "timestamp": at(1), "cwd": "/somewhere/else"},
+                   _pi_entry(1, None, at(1), type="message", message={"role": "user", "content": "Other repo."})]
+    for folder, name, rows in ((pi_dir, "2026-10-07T10-00-00-000Z_%s.jsonl" % PI_SESSION, pi_rows),
+                               (omp_dir, "2026-10-07T10-03-00-000Z_%s.jsonl" % OMP_SESSION, omp_rows),
+                               (omp_dir, "2026-10-04_far.jsonl", decoy_far),
+                               (os.path.join(home, "pi", "sessions", "--somewhere-else--"), "x_other.jsonl", decoy_other)):
+        os.makedirs(folder, exist_ok=True)
+        with open(os.path.join(folder, name), "w", encoding="utf-8") as fh:
+            for r in rows:
+                fh.write(json.dumps(r) + "\n")
+    return {"pi": os.path.join(home, "pi", "sessions"), "omp": os.path.join(home, "omp", "agent", "sessions"),
+            "pi_file": os.path.join(pi_dir, "2026-10-07T10-00-00-000Z_%s.jsonl" % PI_SESSION)}
+
+
 if __name__ == "__main__":
     target = sys.argv[1] if len(sys.argv) > 1 else "/tmp/atlas-demo"
     home = os.path.join(target + "-claude-home")

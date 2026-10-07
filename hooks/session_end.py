@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""SessionEnd hook: save a summary of the session per git branch.
+"""Save a summary of an agent session per git branch, when the session ends.
+
+Called by the Claude Code SessionEnd hook (JSON on stdin) and by the pi / omp extension
+(`--payload '<json>'`). Payload: {session_id, transcript_path, cwd, reason, agent?}.
 
 Writes <git-common-dir>/atlas/sessions/<session_id>.json so branch reports still find the
-session after Claude Code cleans up old transcripts. With ATLAS_GIT_NOTES=1 it also appends
-the summary to refs/notes/atlas-sessions on HEAD, which teammates receive once notes are pushed
+session after transcripts are cleaned up. With ATLAS_GIT_NOTES=1 it also appends the summary
+to refs/notes/atlas-sessions on HEAD; teammates get it once notes are pushed
 (`git push origin refs/notes/atlas-sessions`).
 
 Never fails the session; errors go to <git-common-dir>/atlas/hook-errors.log.
@@ -24,8 +27,14 @@ def git(cwd, *args):
     return proc.stdout.strip() if proc.returncode == 0 else None
 
 
-def main():
-    data = json.load(sys.stdin)
+def read_payload(argv):
+    if "--payload" in argv:
+        return json.loads(argv[argv.index("--payload") + 1])
+    return json.load(sys.stdin)
+
+
+def main(argv):
+    data = read_payload(argv)
     transcript = data.get("transcript_path")
     cwd = data.get("cwd") or os.getcwd()
     if not transcript or not os.path.isfile(transcript):
@@ -37,13 +46,14 @@ def main():
     from atlas import sessions  # noqa: E402
 
     try:
-        by_branch = sessions.summarize_transcript(transcript)
+        by_branch = sessions.summarize_transcript(transcript, agent=data.get("agent"))
         by_branch = {b: s for b, s in by_branch.items() if s.get("tool_calls") or s.get("task")}
         if not by_branch:
             return
         session_id = data.get("session_id") or next(iter(by_branch.values()))["id"]
         record = {
             "session_id": session_id,
+            "agent": data.get("agent") or next(iter(by_branch.values())).get("agent"),
             "ended_at": datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat(),
             "end_reason": data.get("reason"),
             "head": git(cwd, "rev-parse", "HEAD"),
@@ -51,10 +61,11 @@ def main():
         }
         folder = os.path.join(common, "atlas", "sessions")
         os.makedirs(folder, exist_ok=True)
-        tmp = os.path.join(folder, session_id + ".json.tmp")
+        safe_id = "".join(c if c.isalnum() or c in "-_." else "_" for c in session_id)
+        tmp = os.path.join(folder, safe_id + ".json.tmp")
         with open(tmp, "w", encoding="utf-8") as fh:
             json.dump(record, fh, ensure_ascii=False)
-        os.replace(tmp, os.path.join(folder, session_id + ".json"))
+        os.replace(tmp, os.path.join(folder, safe_id + ".json"))
         if os.environ.get("ATLAS_GIT_NOTES") == "1" and record["head"]:
             slim = dict(record, by_branch={b: {k: v for k, v in s.items() if k != "transcript_path"} for b, s in by_branch.items()})
             subprocess.run(["git", "-C", cwd, "notes", "--ref=atlas-sessions", "append", "-m",
@@ -68,7 +79,7 @@ def main():
 
 if __name__ == "__main__":
     try:
-        main()
+        main(sys.argv[1:])
     except Exception:
         pass
     sys.exit(0)

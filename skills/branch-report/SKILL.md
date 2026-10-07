@@ -9,7 +9,12 @@ The report has two layers. Scripts compute the facts (diff, symbols, affected mo
 
 ## The CLI
 
-`ATLAS` below means `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/atlas_cli.py"`. If that placeholder was not filled in, use `python3 "${CLAUDE_SKILL_DIR}/../../scripts/atlas_cli.py"`; if neither exists, Glob for `**/project-atlas/scripts/atlas_cli.py` under `~/.claude` and use the newest. Run it inside the repository.
+`ATLAS` below means `python3 <plugin root>/scripts/atlas_cli.py`. The plugin root is two folders above this SKILL.md. Resolve it in this order:
+1. Claude Code: `${CLAUDE_PLUGIN_ROOT}/scripts/atlas_cli.py`, or `${CLAUDE_SKILL_DIR}/../../scripts/atlas_cli.py`.
+2. pi and omp: the directory this SKILL.md was loaded from (omp states it as `[Skill directory: ...]`), plus `../../scripts/atlas_cli.py`.
+3. If a placeholder above was left unfilled or the file is missing, search for `**/project-atlas/scripts/atlas_cli.py` under `~/.claude`, `~/.pi`, `~/.omp` and the global `node_modules`, and use the newest match.
+
+Quote the path if it contains spaces. `ATLAS --help` must print a usage line; if it cannot open the file, the path is wrong. Run it from inside the repository. It needs only git and python3 (3.8+).
 
 All commands default to the current branch compared with its merge base on main. For another branch, pass `--head <branch>` (and `--base <ref>` if main is not the base) to every command. Outputs go to the folder printed by `ATLAS report-dir` (inside `.git/`, so nothing is added to the working tree).
 
@@ -30,7 +35,7 @@ If the repo has no `.project-map/`, the report still works with automatic groupi
 
 - **The task.** The first prompt of the first session (`sessions.json`), the PR description (`gh pr view <branch>`), or ask the user. Without a task you cannot judge scope; say so in the report.
 - **The diff.** `git diff <merge_base>..<head>`, source and config first, then tests. Read every changed source file in full around the changes, not only the hunks.
-- **The sessions.** For each session with a `transcript_path`, run `ATLAS transcript <path>` for a condensed log (prompts, replies, tool calls). Look for: decisions and the alternatives dropped, assumptions, places the human corrected the agent, reverts, tests skipped or deleted to get green, and work the agent said it would do but did not.
+- **The sessions.** Sessions can come from Claude Code, pi or omp (`agent` in sessions.json). For each one with a `transcript_path`, run `ATLAS transcript <path>` for a condensed log (prompts, replies, tool calls). A session with `"matched_by": "time"` was linked to the branch only by working folder and commit times; confirm it belongs to this branch before you rely on it, and say so in the report. Look for: decisions and the alternatives dropped, assumptions, places the human corrected the agent, reverts, tests skipped or deleted to get green, and work the agent said it would do but did not.
 - **Affected modules.** For each module with status `affected`, open the caller and confirm whether the change really breaks or alters it. Callers that only `imports` the module are possible impacts; confirm or drop them.
 
 ## 3. Write report.json

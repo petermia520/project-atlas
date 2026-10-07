@@ -182,6 +182,76 @@ class TestSessions(Repo):
         self.assertEqual(proc.stdout.strip(), "", "silent outside Atlas repos")
 
 
+class TestOtherAgents(Repo):
+    """pi and oh-my-pi transcripts: branch entries from the extension, and time-based matching."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.dirs = fixture.write_pi_transcripts(cls.repo, cls.home)
+        cls.env = dict(cls.env, ATLAS_PI_SESSIONS=cls.dirs["pi"], ATLAS_OMP_SESSIONS=cls.dirs["omp"])
+
+    def test_pi_summary(self):
+        by_branch = sessions.summarize_transcript(self.dirs["pi_file"], agent="pi")
+        s = by_branch[fixture.BRANCH]
+        self.assertEqual(s["agent"], "pi")
+        self.assertEqual(s["id"], fixture.PI_SESSION)
+        self.assertEqual(s["task"], "Add retries with backoff to webhook delivery.", "the session's first prompt is the task on every branch")
+        self.assertEqual([m["text"] for m in s["human_messages"]], ["Keep the original payload order in the DLQ.", "$ pytest -q"])
+        self.assertEqual(s["files_touched"], ["payments/webhooks/delivery.py"])
+        self.assertEqual(s["tokens"], {"input_tokens": 2500, "output_tokens": 310, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0})
+        self.assertEqual(s["cost_usd"], 0.052)
+        self.assertEqual(s["interrupts"], 1)
+        self.assertEqual(by_branch["main"]["tools"], {"bash": 1})
+
+    def test_find_across_agents(self):
+        old = {k: os.environ.get(k) for k in ("CLAUDE_CONFIG_DIR", "ATLAS_PI_SESSIONS", "ATLAS_OMP_SESSIONS")}
+        os.environ.update(CLAUDE_CONFIG_DIR=self.home, ATLAS_PI_SESSIONS=self.dirs["pi"], ATLAS_OMP_SESSIONS=self.dirs["omp"])
+        try:
+            base = subprocess.run(["git", "-C", self.repo, "rev-parse", "main"], capture_output=True, text=True).stdout.strip()
+            data = sessions.find(self.repo, fixture.BRANCH, base, "HEAD")
+        finally:
+            for k, v in old.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+        got = {s["id"]: (s["agent"], s["matched_by"]) for s in data["sessions"]}
+        self.assertEqual(got, {fixture.SESSION: ("claude-code", "branch"), fixture.PI_SESSION: ("pi", "branch"),
+                               fixture.OMP_SESSION: ("omp", "time")})
+        self.assertEqual(data["agents"], ["claude-code", "omp", "pi"])
+        omp = [s for s in data["sessions"] if s["agent"] == "omp"][0]
+        self.assertEqual(omp["files_touched"], ["payments/webhooks/dlq.py"])
+        self.assertAlmostEqual(data["totals"]["cost_usd"], 0.082)
+
+    def test_condensed_pi(self):
+        text = sessions.condensed(self.dirs["pi_file"])
+        self.assertIn("BRANCH: " + fixture.BRANCH, text)
+        self.assertIn("TOOL edit: payments/webhooks/delivery.py", text)
+        self.assertIn("USER SHELL: pytest -q", text)
+
+    def test_session_end_payload(self):
+        payload = json.dumps({"session_id": fixture.PI_SESSION, "transcript_path": self.dirs["pi_file"], "cwd": self.repo, "agent": "pi"})
+        proc = subprocess.run([sys.executable, os.path.join(ROOT, "hooks", "session_end.py"), "--payload", payload], capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0)
+        with open(os.path.join(self.repo, ".git", "atlas", "sessions", fixture.PI_SESSION + ".json")) as fh:
+            rec = json.load(fh)
+        self.assertEqual(rec["agent"], "pi")
+        self.assertIn(fixture.BRANCH, rec["by_branch"])
+
+    def test_cli_sessions_and_report(self):
+        out = self.cli("sessions").stdout
+        self.assertIn("3 sessions", out)
+        self.cli("impact")
+        self.cli("render", "report")
+
+    @unittest.skipUnless(shutil.which("node"), "node is not installed")
+    def test_extension(self):
+        proc = subprocess.run(["node", os.path.join(HERE, "extension_check.mjs"), self.repo, fixture.BRANCH], capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        subprocess.run(["git", "-C", self.repo, "checkout", "-q", fixture.BRANCH])
+
+
 class TestRender(Repo):
     def test_cli_pipeline(self):
         self.cli("facts", "--rev", "main")

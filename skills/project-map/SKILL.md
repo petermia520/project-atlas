@@ -18,7 +18,12 @@ You maintain `.project-map/` in the repository. It has four kinds of content, an
 
 ## The CLI
 
-`ATLAS` below means `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/atlas_cli.py"`. If that placeholder was not filled in, use `python3 "${CLAUDE_SKILL_DIR}/../../scripts/atlas_cli.py"`; if neither exists, Glob for `**/project-atlas/scripts/atlas_cli.py` under `~/.claude` and use the newest. Run it from inside the repository. It needs only git and python3 (3.8+). `ATLAS --help` lists every command.
+`ATLAS` below means `python3 <plugin root>/scripts/atlas_cli.py`. The plugin root is two folders above this SKILL.md. Resolve it in this order:
+1. Claude Code: `${CLAUDE_PLUGIN_ROOT}/scripts/atlas_cli.py`, or `${CLAUDE_SKILL_DIR}/../../scripts/atlas_cli.py`.
+2. pi and omp: the directory this SKILL.md was loaded from (omp states it as `[Skill directory: ...]`), plus `../../scripts/atlas_cli.py`.
+3. If a placeholder above was left unfilled or the file is missing, search for `**/project-atlas/scripts/atlas_cli.py` under `~/.claude`, `~/.pi`, `~/.omp` and the global `node_modules`, and use the newest match.
+
+Quote the path if it contains spaces. `ATLAS --help` must print a usage line; if it cannot open the file, the path is wrong. Run it from inside the repository. It needs only git and python3 (3.8+).
 
 ## Pick the mode
 
